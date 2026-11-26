@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root=$(cd -- "$(dirname -- "$0")" && pwd)
+if [[ $(uname -s) == Darwin ]]; then
+  executable="$root/bin/mapd-visualizer.app/Contents/MacOS/mapd-visualizer"
+else
+  executable="$root/bin/mapd-visualizer"
+fi
+
+if [[ ! -x $executable ]]; then
+  printf 'Build mapd-visualizer first. See %s/README.md for setup.\n' "$root" >&2
+  exit 1
+fi
+
+if [[ ${1:-} == --demo ]]; then
+  shift
+  set -- "$root/assets/mapd.emap" "$root/assets/demo_mapd.txt" \
+    "$root/assets/tasks_mapd.txt" "$@"
+fi
+
+exec "$executable" "$@"
