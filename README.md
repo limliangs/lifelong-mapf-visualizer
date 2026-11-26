@@ -2,7 +2,7 @@
 
 <img src="./assets/logo.png" alt="Logo" width="400">
 
-# MAPD Visualizer
+# lifelong-mapf-visualizer
 
 [![MIT License](http://img.shields.io/badge/license-MIT-blue.svg?style=flat)](LICENSE)
 [![ci](https://github.com/Kei18/mapf-visualizer/actions/workflows/ci.yml/badge.svg)](https://github.com/Kei18/mapf-visualizer/actions/workflows/ci.yml)
