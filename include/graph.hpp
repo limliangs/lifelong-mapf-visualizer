@@ -1,6 +1,9 @@
 #pragma once
+#include <memory>
 #include <string>
 #include <vector>
+
+enum class PortType { NONE, INLET, OUTLET };
 
 struct Vertex {
   const int id;     // index for V in Graph
@@ -8,6 +11,9 @@ struct Vertex {
   const int x;
   const int y;
   std::vector<Vertex*> neighbor;
+  int region = -1;
+  char arrow = '\0';
+  PortType port = PortType::NONE;
 
   Vertex(int _id, int _index, int _x, int _y);
 };
@@ -74,11 +80,12 @@ using Config =
 using Solution = std::vector<Config>;
 
 struct Graph {
-  Vertices V;  // without nullptr
+  std::vector<std::unique_ptr<Vertex>> V;
   Vertices U;  // with nullptr
-  int width;   // grid width
-  int height;  // grid height
-  Graph();
-  Graph(char* filename);  // taking map filename
-  ~Graph();
+  int width = 0;
+  int height = 0;
+  std::vector<int> regions;
+
+  explicit Graph(const std::string& filename);
+  Vertex* vertexAt(int x, int y) const;
 };

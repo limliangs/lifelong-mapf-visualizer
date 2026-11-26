@@ -8,8 +8,8 @@
 const std::regex r_pos =
     std::regex(R"(\((\d+),(\d+),?([XY]{1}_[A-Z]{4,5})?\),)");
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char* argv[])
+try {
   // simple arguments check
   if (argc < 3 || !std::ifstream(argv[1]) || !std::ifstream(argv[2])) {
     std::cout << "Please check the arguments, e.g.,\n"
@@ -57,4 +57,7 @@ int main(int argc, char *argv[])
   ofRunApp(new ofApp(&G, &solution,
                      (argc > 3 && std::string(argv[3]) == "--capture-only")));
   return 0;
+} catch (const std::exception& error) {
+  std::cerr << error.what() << '\n';
+  return 1;
 }

@@ -2,95 +2,126 @@
 
 #include <cmath>
 #include <fstream>
-#include <iostream>
+#include <limits>
 #include <regex>
+#include <set>
+#include <stdexcept>
 
 Vertex::Vertex(int _id, int _index, int _x, int _y)
     : id(_id), index(_index), x(_x), y(_y), neighbor(Vertices())
 {
 }
 
-Graph::Graph() : V(Vertices()), width(0), height(0) {}
-Graph::~Graph()
+Vertex* Graph::vertexAt(int x, int y) const
 {
-  for (auto& v : V)
-    if (v != nullptr) delete v;
+  if (x < 0 || y < 0 || x >= width || y >= height) return nullptr;
+  return U[width * y + x];
 }
 
-// to load graph
-static const std::regex r_height = std::regex(R"(height\s(\d+))");
-static const std::regex r_width = std::regex(R"(width\s(\d+))");
-static const std::regex r_map = std::regex(R"(map)");
-
-Graph::Graph(char* filename) : V(Vertices()), width(0), height(0)
+Graph::Graph(const std::string& filename)
 {
   std::ifstream file(filename);
-  if (!file) {
-    std::cout << "failed to load " << filename << std::endl;
-    return;
-  }
+  const auto error = [&filename](const std::string& message) {
+    return std::runtime_error(filename + ": " + message);
+  };
+  if (!file) throw error("could not open map");
+
   std::string line;
-  std::smatch results;
-
-  // read fundamental graph parameters
-  while (getline(file, line)) {
-    // for CRLF coding
-    if (*(line.end() - 1) == 0x0d) line.pop_back();
-
-    if (std::regex_match(line, results, r_height)) {
-      height = std::stoi(results[1].str());
+  const auto readLine = [&]() {
+    line.clear();
+    if (!std::getline(file, line)) return false;
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    return true;
+  };
+  const auto readRow = [&](const std::string& block, int y) {
+    if (!readLine() || line.size() != static_cast<size_t>(width)) {
+      throw error(block + " row " + std::to_string(y + 1) +
+                  " does not match the declared dimensions");
     }
-    if (std::regex_match(line, results, r_width)) {
-      width = std::stoi(results[1].str());
+  };
+
+  const std::regex r_height(R"(height\s+(\d+)\s*)");
+  const std::regex r_width(R"(width\s+(\d+)\s*)");
+  std::smatch match;
+  while (readLine() && line != "map") {
+    if (std::regex_match(line, match, r_height)) {
+      height = std::stoi(match[1].str());
     }
-    if (std::regex_match(line, results, r_map)) break;
+    if (std::regex_match(line, match, r_width)) {
+      width = std::stoi(match[1].str());
+    }
+  }
+  if (line != "map" || width <= 0 || height <= 0 ||
+      height > std::numeric_limits<int>::max() / width) {
+    throw error("expected valid height, width, and map headers");
   }
 
-  U = Vertices(width * height, nullptr);
-
-  // create vertices
-  int y = 0;
-  while (getline(file, line)) {
-    // for CRLF coding
-    if (*(line.end() - 1) == 0x0d) line.pop_back();
-    for (int x = 0; x < width; ++x) {
-      char s = line[x];
-      if (s == 'T' or s == '@') continue;  // object
-      auto index = width * y + x;
-      auto v = new Vertex(V.size(), index, x, y);
-      V.push_back(v);
-      U[index] = v;
-    }
-    ++y;
-  }
-  file.close();
-
-  // create edges
+  U.resize(width * height, nullptr);
   for (int y = 0; y < height; ++y) {
+    readRow("map", y);
     for (int x = 0; x < width; ++x) {
-      auto v = U[width * y + x];
-      if (v == nullptr) continue;
-      // left
-      if (x > 0) {
-        auto u = U[width * y + (x - 1)];
-        if (u != nullptr) v->neighbor.push_back(u);
+      const char terrain = line[x];
+      if (std::string("@OTW").find(terrain) != std::string::npos) continue;
+      if (std::string(".GS<>^v").find(terrain) == std::string::npos) {
+        throw error("unknown terrain at (" + std::to_string(x) + "," +
+                    std::to_string(y) + ")");
       }
-      // right
-      if (x < width - 1) {
-        auto u = U[width * y + (x + 1)];
-        if (u != nullptr) v->neighbor.push_back(u);
-      }
-      // up
-      if (y < height - 1) {
-        auto u = U[width * (y + 1) + x];
-        if (u != nullptr) v->neighbor.push_back(u);
-      }
-      // down
-      if (y > 0) {
-        auto u = U[width * (y - 1) + x];
-        if (u != nullptr) v->neighbor.push_back(u);
+      const int index = width * y + x;
+      V.push_back(std::make_unique<Vertex>(V.size(), index, x, y));
+      U[index] = V.back().get();
+      if (std::string("<>^v").find(terrain) != std::string::npos) {
+        U[index]->arrow = terrain;
       }
     }
+  }
+
+  while (readLine() && line.empty()) {
+  }
+  if (!line.empty()) {
+    if (line != "regions")
+      throw error("expected a regions block after the map");
+    std::set<int> ids;
+    for (int y = 0; y < height; ++y) {
+      readRow("regions", y);
+      for (int x = 0; x < width; ++x) {
+        auto* vertex = vertexAt(x, y);
+        if (!vertex) continue;
+        if (line[x] < '0' || line[x] > '9') {
+          throw error("expected a region digit at (" + std::to_string(x) + "," +
+                      std::to_string(y) + ")");
+        }
+        vertex->region = line[x] - '0';
+        ids.insert(vertex->region);
+      }
+    }
+    regions.assign(ids.begin(), ids.end());
+    while (readLine()) {
+      if (!line.empty()) throw error("unexpected data after the regions block");
+    }
+  }
+
+  for (const auto& vertex : V) {
+    const int x = vertex->x;
+    const int y = vertex->y;
+    for (auto* neighbor : {vertexAt(x - 1, y), vertexAt(x + 1, y),
+                           vertexAt(x, y + 1), vertexAt(x, y - 1)}) {
+      if (neighbor) vertex->neighbor.push_back(neighbor);
+    }
+    if (!vertex->arrow) continue;
+
+    const int dx = (vertex->arrow == '>') - (vertex->arrow == '<');
+    const int dy = (vertex->arrow == 'v') - (vertex->arrow == '^');
+    const auto isPeer = [&](const Vertex* other) {
+      return other && vertex->region >= 0 && other->region >= 0 &&
+             other->region != vertex->region && other->arrow == vertex->arrow;
+    };
+    const bool forward = isPeer(vertexAt(x + dx, y + dy));
+    const bool backward = isPeer(vertexAt(x - dx, y - dy));
+    if (forward == backward) {
+      throw error("port at (" + std::to_string(x) + "," + std::to_string(y) +
+                  ") needs exactly one same-arrow peer in another region");
+    }
+    vertex->port = forward ? PortType::OUTLET : PortType::INLET;
   }
 }
 

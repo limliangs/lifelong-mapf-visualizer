@@ -47,6 +47,8 @@ public:
   void setup();
   void update();
   void draw();
+  void drawMap();
+  void drawSidebar(float x);
 
   void keyPressed(int key);
   void keyReleased(int key);

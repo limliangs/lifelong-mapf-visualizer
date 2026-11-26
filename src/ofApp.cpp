@@ -1,13 +1,11 @@
 #include "../include/ofApp.hpp"
 
-#include <fstream>
-
 #include "../include/param.hpp"
 
-static int get_scale(const Graph* G)
+static int get_scale(const Graph* G, bool sidebar)
 {
-  auto window_max_w =
-      default_screen_width - screen_x_buffer * 2 - window_x_buffer * 2;
+  auto window_max_w = default_screen_width - screen_x_buffer * 2 -
+                      window_x_buffer * 2 - (sidebar ? sidebar_width : 0);
   auto window_max_h =
       default_screen_height - window_y_top_buffer - window_y_bottom_buffer;
   return std::min(window_max_w / G->width, window_max_h / G->height) + 1;
@@ -39,7 +37,7 @@ ofApp::ofApp(Graph* _G, Solution* _P, bool _flg_capture_only)
       N(P->front().size()),
       T(P->size() - 1),
       goals(P->back()),
-      scale(get_scale(G)),
+      scale(get_scale(G, !G->regions.empty())),
       agent_rad(scale / std::sqrt(2) / 2),
       goal_rad(scale / 4.0),
       font_size(std::max(scale / 8, 6)),
@@ -60,7 +58,7 @@ void ofApp::setup()
 {
   auto w = G->width * scale + 2 * window_x_buffer;
   auto h = G->height * scale + window_y_top_buffer + window_y_bottom_buffer;
-  ofSetWindowShape(w, h);
+  ofSetWindowShape(w + (G->regions.empty() ? 0 : sidebar_width), h);
   ofBackground(Color::bg);
   ofSetCircleResolution(32);
   ofSetFrameRate(30);
@@ -108,9 +106,112 @@ void ofApp::update()
   }
 }
 
+static void drawPort(const Vertex& vertex, float x, float y, int scale)
+{
+  const auto color =
+      vertex.port == PortType::INLET ? Color::inlet : Color::outlet;
+  const float center_x = x + scale / 2.f;
+  const float center_y = y + scale * (scale >= 32 ? 0.38f : 0.5f);
+  const float radius = scale * 0.25f;
+  ofSetColor(color);
+  ofDrawRectangle(x + scale * 0.08f, y + scale * 0.08f, scale * 0.84f,
+                  scale * 0.84f);
+
+  ofSetColor(255);
+  ofPushMatrix();
+  ofTranslate(center_x, center_y);
+  if (vertex.arrow == '<') ofRotateZDeg(180);
+  if (vertex.arrow == '^') ofRotateZDeg(-90);
+  if (vertex.arrow == 'v') ofRotateZDeg(90);
+  ofDrawRectangle(-radius, -radius * 0.2f, radius * 1.3f, radius * 0.4f);
+  ofDrawTriangle(0, -radius * 0.65f, 0, radius * 0.65f, radius, 0);
+  ofPopMatrix();
+
+  if (scale >= 32) {
+    const bool inlet = vertex.port == PortType::INLET;
+    ofDrawBitmapString(inlet ? "IN" : "OUT", center_x - (inlet ? 8 : 12),
+                       y + scale * 0.82f);
+  }
+}
+
+void ofApp::drawMap()
+{
+  ofSetLineWidth(1);
+  ofFill();
+  const float grid_gap = flg_grid ? 0.3f : 0.f;
+  for (const auto& vertex : G->V) {
+    const float x = vertex->x * scale + window_x_buffer;
+    const float y = vertex->y * scale + window_y_top_buffer;
+    ofSetColor(vertex->region < 0 ? Color::node
+                                  : Color::regions[vertex->region]);
+    ofDrawRectangle(x - grid_gap / 2, y - grid_gap / 2, scale - grid_gap,
+                    scale - grid_gap);
+    if (flg_font) {
+      ofSetColor(Color::font);
+      font.drawString(std::to_string(vertex->index), x + 1, y + font_size + 1);
+    }
+  }
+
+  if (G->regions.empty()) return;
+  ofSetLineWidth(2);
+  ofSetColor(Color::region_edge);
+  for (const auto& vertex : G->V) {
+    const float x = vertex->x * scale + window_x_buffer;
+    const float y = vertex->y * scale + window_y_top_buffer;
+    const auto* right = G->vertexAt(vertex->x + 1, vertex->y);
+    const auto* below = G->vertexAt(vertex->x, vertex->y + 1);
+    if (right && right->region != vertex->region) {
+      ofDrawLine(x + scale, y, x + scale, y + scale);
+    }
+    if (below && below->region != vertex->region) {
+      ofDrawLine(x, y + scale, x + scale, y + scale);
+    }
+  }
+  ofSetLineWidth(1);
+  for (const auto& vertex : G->V) {
+    if (vertex->port != PortType::NONE) {
+      drawPort(*vertex, vertex->x * scale + window_x_buffer,
+               vertex->y * scale + window_y_top_buffer, scale);
+    }
+  }
+}
+
+void ofApp::drawSidebar(float x)
+{
+  ofFill();
+  ofSetColor(15, 23, 42);
+  ofDrawRectangle(x, 0, ofGetWidth() - x, ofGetHeight());
+  x += 14;
+  ofSetColor(Color::font_info);
+  ofDrawBitmapString("Regions", x, 24);
+
+  int y = 30;
+  for (size_t i = 0; i < G->regions.size(); ++i) {
+    const int region = G->regions[i];
+    const float column = x + (i % 2) * 94;
+    y = 34 + (i / 2) * 20;
+    ofSetColor(Color::regions[region]);
+    ofDrawRectangle(column, y, 12, 12);
+    ofSetColor(Color::font_info);
+    ofDrawBitmapString("Region " + std::to_string(region), column + 19, y + 10);
+  }
+
+  y += 35;
+  ofSetColor(Color::inlet);
+  ofDrawRectangle(x, y - 10, 12, 12);
+  ofSetColor(Color::font_info);
+  ofDrawBitmapString("IN  Inlet", x + 19, y);
+  ofSetColor(Color::outlet);
+  ofDrawRectangle(x, y + 10, 12, 12);
+  ofSetColor(Color::font_info);
+  ofDrawBitmapString("OUT Outlet", x + 19, y + 20);
+}
+
 void ofApp::draw()
 {
-  cam.begin();
+  const auto map_width =
+      std::max(1, ofGetWidth() - (G->regions.empty() ? 0 : sidebar_width));
+  cam.begin(ofRectangle(0, 0, map_width, ofGetHeight()));
   if (flg_snapshot) {
     ofBeginSaveScreenAsPDF(ofFilePath::getUserHomeDir() +
                                "/Desktop/screenshot-" + ofGetTimestampString() +
@@ -118,27 +219,7 @@ void ofApp::draw()
                            false);
   }
 
-  // draw graph
-  ofSetLineWidth(1);
-  ofFill();
-  for (int x = 0; x < G->width; ++x) {
-    for (int y = 0; y < G->height; ++y) {
-      auto index = x + y * G->width;
-      if (G->U[index] == nullptr) continue;
-      ofSetColor(Color::node);
-      auto x_draw = x * scale - scale / 2 + window_x_buffer + scale / 2 - 0.15;
-      auto y_draw =
-          y * scale - scale / 2 + window_y_top_buffer + scale / 2 - 0.15;
-      auto gridline_space = flg_grid ? 0.3 : 0.0;
-      ofDrawRectangle(x_draw, y_draw, scale - gridline_space,
-                      scale - gridline_space);
-      if (flg_font) {
-        ofSetColor(Color::font);
-        font.drawString(std::to_string(index), x_draw + 1,
-                        y_draw + font_size + 1);
-      }
-    }
-  }
+  drawMap();
 
   // draw goals
   if (flg_goal) {
@@ -250,6 +331,7 @@ void ofApp::draw()
   }
 
   cam.end();
+  if (!G->regions.empty()) drawSidebar(map_width);
   gui.draw();
 }
 
