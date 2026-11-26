@@ -1,8 +1,8 @@
 #pragma once
 
-#include "graph.hpp"
 #include "ofMain.h"
 #include "ofxGui.h"
+#include "recording.hpp"
 
 class ofApp : public ofBaseApp
 {
@@ -11,9 +11,13 @@ public:
   const Solution* P;  // plan
   const int N;        // number of agents
   const int T;        // makespan
-  const Config goals;
+  const Tasks* tasks;
+  Config goals;
+  const bool has_sidebar;
+  int goal_page = 0;
 
   // size
+  const int map_top;
   const int scale;
   const float agent_rad;
   const float goal_rad;
@@ -48,7 +52,9 @@ public:
   void update();
   void draw();
   void drawMap();
-  void drawSidebar(float x);
+  void drawSidebar(float x, int timestep);
+  int goalsTop() const;
+  int goalRowsPerPage() const;
 
   void keyPressed(int key);
   void keyReleased(int key);
@@ -62,5 +68,6 @@ public:
   void dragEvent(ofDragInfo dragInfo);
   void gotMessage(ofMessage msg);
 
-  ofApp(Graph* _G, Solution* _P, bool flg_capture_only = false);
+  ofApp(const Graph* _G, const Solution* _P, const Tasks* _tasks,
+        bool flg_capture_only = false);
 };

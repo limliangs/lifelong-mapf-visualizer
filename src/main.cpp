@@ -1,61 +1,46 @@
-#include <fstream>
 #include <iostream>
-#include <regex>
+#include <stdexcept>
 
 #include "../include/ofApp.hpp"
-#include "ofMain.h"
 
-const std::regex r_pos =
-    std::regex(R"(\((\d+),(\d+),?([XY]{1}_[A-Z]{4,5})?\),)");
+static void printUsage(std::ostream& out)
+{
+  out << "Usage: mapd-visualizer <map.map|map.emap> <paths.txt> [tasks.txt]"
+         " [--capture-only]\n";
+}
 
 int main(int argc, char* argv[])
 try {
-  // simple arguments check
-  if (argc < 3 || !std::ifstream(argv[1]) || !std::ifstream(argv[2])) {
-    std::cout << "Please check the arguments, e.g.,\n"
-              << "> mapf-visualizer assets/random-32-32-20.map "
-                 "assets/demo_random-32-32-20.txt"
-              << std::endl;
+  if (argc == 2 && std::string(argv[1]) == "--help") {
+    printUsage(std::cout);
     return 0;
   }
-
-  // load graph
-  Graph G(argv[1]);
-
-  // load plan
-  auto solution_file = std::ifstream(argv[2]);
-  Solution solution;
-  std::string line;
-  std::smatch m, results;
-  while (getline(solution_file, line)) {
-    // so we only process real solution lines
-    if (line.find(":(") == std::string::npos) continue;
-
-    auto iter = line.cbegin();
-    Config c;
-    while (iter < line.cend()) {
-      auto search_end = std::min(iter + 128, line.cend());
-      if (std::regex_search(iter, search_end, m, r_pos)) {
-        auto x = std::stoi(m[1].str());
-        auto y = std::stoi(m[2].str());
-        Orientation o = Orientation::NONE;
-        if (m[3].matched) {
-          o = Orientation::from_string(m[3].str());
-        }
-        c.push_back(Pose(G.U[G.width * y + x], o));
-        iter += m[0].length();
-      } else {
-        break;
-      }
-    }
-    solution.push_back(c);
+  if (argc < 3) {
+    printUsage(std::cerr);
+    return 1;
   }
-  solution_file.close();
 
-  // visualize
+  bool capture_only = false;
+  std::string tasks_file;
+  for (int i = 3; i < argc; ++i) {
+    const std::string value = argv[i];
+    if (value == "--capture-only" && !capture_only) {
+      capture_only = true;
+    } else if (!value.empty() && value.front() != '-' && tasks_file.empty()) {
+      tasks_file = value;
+    } else {
+      throw std::runtime_error("Unexpected argument: " + value);
+    }
+  }
+
+  const Graph graph(argv[1]);
+  const Solution solution = loadSolution(argv[2], graph);
+  const Tasks tasks = tasks_file.empty() ? Tasks()
+                                         : loadTasks(tasks_file, graph,
+                                                     solution.front().size());
+
   ofSetupOpenGL(100, 100, OF_WINDOW);
-  ofRunApp(new ofApp(&G, &solution,
-                     (argc > 3 && std::string(argv[3]) == "--capture-only")));
+  ofRunApp(new ofApp(&graph, &solution, &tasks, capture_only));
   return 0;
 } catch (const std::exception& error) {
   std::cerr << error.what() << '\n';

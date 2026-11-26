@@ -7,6 +7,7 @@ static constexpr int screen_x_buffer = 50;
 static constexpr int screen_y_buffer = 75;
 static constexpr int window_x_buffer = 25;
 static constexpr int window_y_top_buffer = 50;
+static constexpr int sidebar_map_top = 76;
 static constexpr int window_y_bottom_buffer = 25;
 static constexpr int sidebar_width = 220;
 
